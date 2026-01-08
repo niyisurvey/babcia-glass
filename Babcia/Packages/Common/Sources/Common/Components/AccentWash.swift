@@ -2,7 +2,7 @@ import SwiftUI
 
 // HeroBottomKey: hero reports its bottom Y (in a named coordinate space)
 public struct HeroBottomKey: PreferenceKey {
-    public static var defaultValue: CGFloat = 0
+    public static var defaultValue: CGFloat { 0 }
     public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
     }
