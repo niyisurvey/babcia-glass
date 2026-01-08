@@ -35,57 +35,63 @@ struct RoomDetailView: View {
     var body: some View {
         Group {
             if let room {
-                ZStack {
-                    roomDetailBackground(character: room.character)
-                        .ignoresSafeArea()
+                GeometryReader { proxy in
+                    // Use a stable screen-based height so background alignment cannot “flip” due to layout negotiation.
+                    let heroHeight = min(UIScreen.main.bounds.height * 0.55, 420)
+                    ZStack {
+                        roomDetailBackground(character: room.character)
 
-                    ScrollView {
-                        VStack(spacing: BabciaSpacing.sectionGap) {
-                            RoomHeroHeader(
-                                room: room,
-                                backgroundColor: roomDetailBaseColor
-                            )
+                        ScrollView {
+                            VStack(spacing: BabciaSpacing.sectionGap) {
+                                RoomHeroHeader(
+                                    room: room,
+                                    backgroundColor: roomDetailBaseColor,
+                                    height: heroHeight
+                                )
 
-                            VStack(alignment: .leading, spacing: BabciaSpacing.sectionGap) {
-                                RoomModeSummary(room: room, modeCharacter: appViewModel.settings.selectedCharacter)
+                                VStack(alignment: .leading, spacing: BabciaSpacing.sectionGap) {
+                                    RoomModeSummary(room: room, modeCharacter: appViewModel.settings.selectedCharacter)
 
-                                if let advice = room.babciaAdvice, !advice.isEmpty {
-                                    AdviceCard(message: advice)
-                                }
+                                    if let advice = room.babciaAdvice, !advice.isEmpty {
+                                        AdviceCard(message: advice)
+                                    }
 
-                                if room.tasks.isEmpty {
-                                    EmptyTasksCard()
-                                } else {
-                                    VerificationSummaryCard(room: room)
+                                    if room.tasks.isEmpty {
+                                        EmptyTasksCard()
+                                    } else {
+                                        VerificationSummaryCard(room: room)
 
-                                    TaskList(room: room) { task, markComplete in
-                                        if markComplete {
-                                            pendingManualToggle = ManualToggleIntent(taskID: task.id, markComplete: true)
-                                        } else {
-                                            appViewModel.setManualTask(roomID: room.id, taskID: task.id, isCompleted: false)
+                                        TaskList(room: room) { task, markComplete in
+                                            if markComplete {
+                                                pendingManualToggle = ManualToggleIntent(taskID: task.id, markComplete: true)
+                                            } else {
+                                                appViewModel.setManualTask(roomID: room.id, taskID: task.id, isCompleted: false)
+                                            }
+                                        }
+
+                                        if let lastVerified = room.lastVerifiedAt {
+                                            Text("Last verified: \(lastVerified.formatted(date: .abbreviated, time: .shortened))")
+                                                .font(.babcia(.caption))
+                                                .foregroundColor(.secondary)
+                                        }
+
+                                        if room.manualOverrideAvailable {
+                                            ManualOverrideCard(
+                                                isTrusted: appViewModel.settings.selectedCharacter == .wellnessX,
+                                                onOverride: { showingManualOverrideConfirm = true }
+                                            )
                                         }
                                     }
 
-                                    if let lastVerified = room.lastVerifiedAt {
-                                        Text("Last verified: \(lastVerified.formatted(date: .abbreviated, time: .shortened))")
-                                            .font(.babcia(.caption))
-                                            .foregroundColor(.secondary)
-                                    }
+                                    AutoScanCard(room: room)
 
-                                    if room.manualOverrideAvailable {
-                                        ManualOverrideCard(
-                                            isTrusted: appViewModel.settings.selectedCharacter == .wellnessX,
-                                            onOverride: { showingManualOverrideConfirm = true }
-                                        )
-                                    }
+                                    RoomStatsBar(room: room)
                                 }
-
-                                AutoScanCard(room: room)
-
-                                RoomStatsBar(room: room)
+                                .babciaScreenPadding()
                             }
-                            .babciaScreenPadding()
                         }
+                        // Remove the NavigationStack's automatic top inset so the hero sits flush.
+                        .contentMargins(.top, -proxy.safeAreaInsets.top, for: .scrollContent)
                     }
                 }
                 .toolbarBackground(.hidden, for: .navigationBar)
@@ -181,29 +187,19 @@ struct RoomDetailView: View {
 
     @ViewBuilder
     private func roomDetailBackground(character: BabciaCharacter) -> some View {
-        let base = roomDetailBaseColor
-        let accent = Color(hex: character.accentHex)
-        ZStack {
-            base
-            LinearGradient(
-                colors: [
-                    accent.opacity(colorScheme == .dark ? 0.18 : 0.12),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        // Use the semantic surface token so the page background adapts to dark/light and accessibility.
+        roomDetailBaseColor
+            .ignoresSafeArea()
     }
 }
 
 struct RoomHeroHeader: View {
     let room: Room
     let backgroundColor: Color
+    let height: CGFloat
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let height = min(UIScreen.main.bounds.height * 0.55, 420)
         ZStack(alignment: .bottomLeading) {
             backgroundColor
 
@@ -211,45 +207,37 @@ struct RoomHeroHeader: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
                 .clipped()
-                .mask(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .black, location: 0),
-                            .init(color: .black, location: 0.72),
-                            .init(color: .clear, location: 1)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            Color.clear,
-                            Color.black.opacity(colorScheme == .dark ? 0.55 : 0.35)
-                        ],
-                        startPoint: .center,
-                        endPoint: .bottom
-                    )
-                )
+                .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: BabciaSpacing.xs) {
+                        Text(room.name)
+                            .font(.babcia(.displaySm))
+                            .foregroundStyle(.primary)
 
-            VStack(alignment: .leading, spacing: BabciaSpacing.xs) {
-                Text(room.name)
-                    .font(.babcia(.displaySm))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
-
-                Text(room.character.displayName)
-                    .font(.babcia(.caption))
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, BabciaSpacing.screenHorizontal)
-            .padding(.bottom, BabciaSpacing.xl)
+                        Text(room.character.displayName)
+                            .font(.babcia(.caption))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, BabciaSpacing.screenHorizontal)
+                    .padding(.bottom, BabciaSpacing.xl)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        if #available(iOS 26.0, *) {
+                            // Use the existing babcia wrapper for Liquid Glass on modern iOS.
+                            Color.clear.babciaGlassEffect(.regular)
+                        } else {
+                            // System Material fallback for adaptive vibrancy / legibility.
+                            Rectangle()
+                                .fill(.ultraThinMaterial)
+                        }
+                    }
+                }
         }
+
         .frame(maxWidth: .infinity)
+        .ignoresSafeArea(edges: .top)
     }
+
+
 
     private var heroImage: some View {
         ZStack {
